@@ -25,7 +25,6 @@ class HistoryManager:
     def get_history(self):
         query = "SELECT version_id, user_query, sql_query, timestamp, schema_name FROM query_history ORDER BY version_id"
         result = self.db.execute_query(query)
-        # Handle cases where schema_name might be missing in older rows
         if result:
             return [row if len(row) == 5 else (row[0], row[1], row[2], row[3], None) for row in result["rows"]]
         return []

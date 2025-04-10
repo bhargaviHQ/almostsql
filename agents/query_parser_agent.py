@@ -5,6 +5,12 @@ import streamlit as st
 
 class QueryParserAgent:
     def parse_query(self, user_input, schema_name):
+        return self._generate_query(user_input, schema_name, invert=False)
+
+    def generate_inverse_query(self, original_query, schema_name):
+        return self._generate_query(original_query, schema_name, invert=True)
+
+    def _generate_query(self, query_input, schema_name, invert=False):
         db = DBConnection()
         try:
             # Gather context
@@ -18,28 +24,50 @@ class QueryParserAgent:
             }
 
             # Complete the prompt with column name correction
-            completed_prompt = self._complete_prompt(user_input, context)
-            prompt = PromptTemplate(
-                input_variables=["query", "context"],
-                template="""
-                Given this user query: '{query}' and the database context: {context},
-                generate a valid MySQL query.
-                - Use lowercase for table and column names.
-                - Include the schema name '{schema_name}' in the query where appropriate.
-                - Support complex queries including JOINs, subqueries, GROUP BY, HAVING, and ORDER BY.
-                - If the query implies a table creation and it doesn't exist, include a CREATE TABLE statement with inferred column types (INT for numbers, DATE for YYYY-MM-DD, VARCHAR(255) for text).
-                - For INSERT/UPDATE, parse key-value pairs (e.g., 'id is 12', 'name to John') and conditions (e.g., 'where id = 12').
-                - If column names don't exactly match but are similar (e.g., 'store id' vs 'store_id'), use the existing column name.
-                - If multiple similar column names exist (e.g., 'productid' and 'product_id'), return 'CLARIFY: Multiple similar columns found: [list]. Which one did you mean?'.
-                - For CSV data upload (e.g., 'upload csv into table_name'), parse the CSV content provided in the query and generate:
-                  - A CREATE TABLE statement if the table doesn't exist, inferring column types from the CSV data.
-                  - An INSERT INTO statement with the CSV data as VALUES, e.g., INSERT INTO table_name (col1, col2) VALUES (val1, val2), (val3, val4).
-                  - Do NOT use COPY or LOAD DATA INFILE; use INSERT INTO for MySQL compatibility.
-                - Return ONLY the plain SQL query string with no extra text, comments, or formatting like ```sql or backticks.
+            completed_prompt = self._complete_prompt(query_input, context) if not invert else query_input
+            prompt_template = """
+            Given this {mode} query: '{query}' and the database context: {context},
+            {task}.
+            - Use lowercase for table and column names.
+            - Include the schema name '{schema_name}' in the query where appropriate.
+            - Support complex queries including JOINs, subqueries, GROUP BY, HAVING, and ORDER BY.
+            - If the query implies a table creation and it doesn't exist (for normal mode), include a CREATE TABLE statement with inferred column types (INT for numbers, DATE for YYYY-MM-DD, VARCHAR(255) for text).
+            - For INSERT/UPDATE, parse key-value pairs (e.g., 'id is 12', 'name to John') and conditions (e.g., 'where id = 12').
+            - If column names don't exactly match but are similar (e.g., 'store id' vs 'store_id'), use the existing column name.
+            - If multiple similar column names exist (e.g., 'productid' and 'product_id'), return 'CLARIFY: Multiple similar columns found: [list]. Which one did you mean?'.
+            - For CSV data upload (e.g., 'upload csv into table_name'), parse the CSV content provided in the query and generate:
+              - A CREATE TABLE statement if the table doesn't exist, inferring column types from the CSV data.
+              - An INSERT INTO statement with the CSV data as VALUES, e.g., INSERT INTO table_name (col1, col2) VALUES (val1, val2), (val3, val4).
+              - Do NOT use COPY or LOAD DATA INFILE; use INSERT INTO for MySQL compatibility.
+            - Return ONLY the plain SQL query string with no extra text, comments, or formatting like ```sql or backticks.
+            """
+            
+            if invert:
+                mode = "original SQL"
+                task = """
+                generate the inverse MySQL query to undo the operation.
+                - For CREATE TABLE, generate DROP TABLE.
+                - For INSERT, generate DELETE with the same conditions.
+                - For UPDATE, generate an UPDATE that reverses the SET clause (if possible).
+                - For DROP TABLE, generate CREATE TABLE (if schema is known).
+                - If the inverse operation is not feasible (e.g., due to missing prior state), return 'CLARIFY: Cannot generate inverse query due to missing state information.'
                 """
+            else:
+                mode = "user"
+                task = "generate a valid MySQL query"
+
+            prompt = PromptTemplate(
+                input_variables=["query", "context", "schema_name", "mode", "task"],
+                template=prompt_template
             )
 
-            formatted_prompt = prompt.format(query=completed_prompt, context=str(context), schema_name=schema_name)
+            formatted_prompt = prompt.format(
+                query=completed_prompt,
+                context=str(context),
+                schema_name=schema_name,
+                mode=mode,
+                task=task
+            )
             response = Config.groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": formatted_prompt}]
@@ -50,7 +78,8 @@ class QueryParserAgent:
             sql_query = sql_query.replace("```sql", "").replace("```", "").replace("\n", " ").strip()
             
             # Debug: Log the raw SQL query for inspection
-            st.session_state.results.append({"status": "debug", "message": f"Raw SQL Query: {sql_query}"})
+            if not invert:
+                st.session_state.results.append({"status": "debug", "message": f"Raw SQL Query: {sql_query}"})
             
             return sql_query
         except Exception as e:
