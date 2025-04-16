@@ -1,16 +1,18 @@
 import streamlit as st
 from agents.controller_agent import ControllerAgent
 from database.db_connection import DBConnection
+from config.config import Config
+from utils.logger import Logger
 
-def get_available_schemas():
-    db = DBConnection()
+def get_available_schemas(db_params):
+    db = DBConnection(**db_params)
     try:
         return db.get_schemas()
     finally:
         db.close()
 
-def create_schema(schema_name):
-    db = DBConnection()
+def create_schema(schema_name, db_params):
+    db = DBConnection(**db_params)
     try:
         db.execute_query(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
     finally:
@@ -23,7 +25,6 @@ def format_html_table(table_data):
     rows = table_data["rows"]
     columns = table_data["columns"]
     
-    # Limit to top 50 rows
     total_rows = len(rows)
     display_rows = rows[:50] if total_rows > 50 else rows
     row_limit_message = f"<p>Showing top 50 of {total_rows} rows</p>" if total_rows > 50 else ""
@@ -78,7 +79,62 @@ def format_html_table(table_data):
     html += row_limit_message
     return html
 
+def setup_connection_details():
+    st.title("Setup Connection Details")
+    st.write("Please provide the following details to connect to the database and LLM service.")
+
+    if "groq_api_key" not in st.session_state:
+        st.session_state.groq_api_key = ""
+    if "db_host" not in st.session_state:
+        st.session_state.db_host = "localhost"
+    if "db_user" not in st.session_state:
+        st.session_state.db_user = "root"
+    if "db_password" not in st.session_state:
+        st.session_state.db_password = ""
+    if "db_name" not in st.session_state:
+        st.session_state.db_name = "sql_chat_db"
+    if "connection_setup" not in st.session_state:
+        st.session_state.connection_setup = False
+
+    groq_api_key = st.text_input("GROQ API Key", value=st.session_state.groq_api_key, type="password")
+    db_host = st.text_input("Database Host", value=st.session_state.db_host)
+    db_user = st.text_input("Database User", value=st.session_state.db_user)
+    db_password = st.text_input("Database Password", value=st.session_state.db_password, type="password")
+    db_name = st.text_input("Database Name", value=st.session_state.db_name)
+
+    if st.button("Save and Proceed"):
+        st.session_state.groq_api_key = groq_api_key
+        st.session_state.db_host = db_host
+        st.session_state.db_user = db_user
+        st.session_state.db_password = db_password
+        st.session_state.db_name = db_name
+        
+        try:
+            db_params = {
+                "host": db_host,
+                "user": db_user,
+                "password": db_password,
+                "database": db_name
+            }
+            db = DBConnection(**db_params)
+            db.close()
+            st.session_state.connection_setup = True
+            st.session_state.db_params = db_params
+            st.session_state.config = Config(groq_api_key)
+            st.success("Connection details saved successfully!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to connect to the database: {str(e)}")
+
 def main():
+    if not st.session_state.get("connection_setup", False):
+        setup_connection_details()
+        return
+
+    db_params = st.session_state.db_params
+    if "config" not in st.session_state:
+        st.session_state.config = Config(st.session_state.groq_api_key)
+
     st.title("SQL Chat Application")
     
     if 'controller' not in st.session_state:
@@ -92,82 +148,88 @@ def main():
     if 'input_value' not in st.session_state:
         st.session_state.input_value = ""
     
-    # Schema selection and creation
-    available_schemas = get_available_schemas()
+    available_schemas = get_available_schemas(db_params)
     schema_name = st.sidebar.selectbox("Select Schema", available_schemas, key="schema_select")
     
     new_schema = st.sidebar.text_input("Create new schema:")
     if new_schema and st.sidebar.button("Create Schema"):
-        create_schema(new_schema.lower())
+        create_schema(new_schema.lower(), db_params)
         st.rerun()
     
-    # CSV Upload
     csv_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
     if csv_file is not None:
         st.session_state.file_content = csv_file.read().decode("utf-8")
     
-    # Chat interface with submit button
     user_input = st.text_area("Enter your query:", 
                             value=st.session_state.input_value,
                             height=150,
                             key="query_input_box")
     
     if st.button("Submit Query") and user_input and schema_name:
-        st.session_state.results = []  # Clear previous results
-        result = st.session_state.controller.process_query(user_input, schema_name)
-        st.session_state.results.append(result)
-        if result["status"] != "confirmation_needed":
-            st.session_state.input_value = ""
-    
-    # Display results (only latest)
-    for result in st.session_state.results:
-        if result["status"] == "success":
+        with st.spinner("Processing your query..."):
+            st.session_state.results = []
+            result = st.session_state.controller.process_query(user_input, schema_name)
+            st.session_state.results.append(result)
+            if result["status"] != "confirmation_needed":
+                st.session_state.input_value = ""
+
+    if st.session_state.results:
+        latest_result = st.session_state.results[-1]
+        if latest_result["status"] == "success":
             st.success("Query executed successfully")
-            st.markdown(format_html_table(result.get("result", "No output")), unsafe_allow_html=True)
-            st.write("SQL Query:", result["sql_query"])
-            st.write("Learning Output:", result["learning_output"])
-        elif result["status"] == "error":
-            st.error(result["message"])
-        elif result["status"] == "clarification_needed":
-            st.warning(result["message"])
-        elif result["status"] == "debug":
-            st.info(result["message"])
-        elif result["status"] == "confirmation_needed":
+            if "result" in latest_result:
+                st.markdown(format_html_table(latest_result.get("result", "No output")), unsafe_allow_html=True)
+                st.write("SQL Query:", latest_result["sql_query"])
+                st.write("Learning Output:", latest_result["learning_output"])
+            else:
+                st.write("Original SQL Query:", latest_result["sql_query"])
+                st.write("Inverse Query Executed:", latest_result["inverse_query"])
+        elif latest_result["status"] == "error":
+            st.error(latest_result["message"])
+        elif latest_result["status"] == "clarification_needed":
+            st.warning(latest_result["message"])
+        elif latest_result["status"] == "confirmation_needed":
             st.warning("Confirmation required")
-            st.write("SQL Query:", result["sql_query"])
-            if st.sidebar.button("Confirm Execution", key=f"confirm_{result['sql_query']}"):
-                try:
-                    db = DBConnection()
-                    result_exec = db.execute_query(result["sql_query"])
-                    version_id = st.session_state.controller.history.save_query(
-                        st.session_state.pending_query["input"], 
-                        result["sql_query"], 
-                        schema_name
-                    )
-                    st.session_state.results = [{
-                        "status": "success",
-                        "result": result_exec,
-                        "sql_query": result["sql_query"],
-                        "learning_output": f"For your request: '{st.session_state.pending_query['input']}'\nGenerated SQL: {result['sql_query']}",
-                        "version_id": version_id
-                    }]
-                    st.session_state.confirm_needed = False
-                    st.session_state.pending_query = None
-                    st.session_state.input_value = ""
-                except Exception as e:
-                    st.session_state.results = [{"status": "error", "message": f"Error executing confirmed query: {str(e)}"}]
-                st.rerun()
+            st.write("SQL Query:", latest_result["sql_query"])
+            if st.sidebar.button("Confirm Execution", key=f"confirm_{latest_result['sql_query']}"):
+                with st.spinner("Executing confirmed query..."):
+                    try:
+                        db = DBConnection(**db_params)
+                        result_exec = db.execute_query(latest_result["sql_query"])
+                        version_id = st.session_state.controller.history.save_query(
+                            st.session_state.pending_query["input"], 
+                            latest_result["sql_query"], 
+                            schema_name
+                        )
+                        st.session_state.results = [{
+                            "status": "success",
+                            "result": result_exec,
+                            "sql_query": latest_result["sql_query"],
+                            "learning_output": f"For your request: '{st.session_state.pending_query['input']}'\nGenerated SQL: {latest_result['sql_query']}",
+                            "version_id": version_id
+                        }]
+                        st.session_state.confirm_needed = False
+                        st.session_state.pending_query = None
+                        st.session_state.input_value = ""
+                    except Exception as e:
+                        st.session_state.results = [{"status": "error", "message": f"Error executing confirmed query: {str(e)}"}]
+                    st.rerun()
     
-    # History section with revert in collapsible panel
     with st.expander("Query History"):
         history = st.session_state.controller.history.get_history()
         if history:
+            if st.button("Clear History"):
+                with st.spinner("Clearing history..."):
+                    st.session_state.controller.history.clear_history()
+                    st.rerun()
+            
             for version_id, user_q, sql_q, timestamp, schema_name in history:
                 st.write(f"Version {version_id} ({timestamp}): {user_q} (Schema: {schema_name or 'Unknown'})")
                 if st.button(f"Revert to Version {version_id}", key=f"revert_{version_id}"):
-                    revert_result = st.session_state.controller.revert_to_version(version_id)
-                    st.session_state.results = [revert_result]
-                    st.rerun()
+                    with st.spinner("Reverting to version..."):
+                        revert_result = st.session_state.controller.revert_to_version(version_id)
+                        st.session_state.results = [revert_result]
+                        st.rerun()
 
 if __name__ == "__main__":
     main()
