@@ -1,30 +1,31 @@
 import mysql.connector
 from mysql.connector import errorcode
-from config.config import Config
 
 class DBConnection:
-    def __init__(self):
+    def __init__(self, host, user, password, database):
         try:
             self.conn = mysql.connector.connect(
-                host=Config.MYSQL_HOST,
-                user=Config.MYSQL_USER,
-                password=Config.MYSQL_PASSWORD
+                host=host,
+                user=user,
+                password=password,
+                connection_timeout=30  # 30-second timeout for connection
             )
-            self.cursor = self.conn.cursor()  # Default cursor returns tuples
-            self.cursor.execute(f"CREATE DATABASE IF NOT EXISTS {Config.MYSQL_DB}")
-            self.cursor.execute(f"USE {Config.MYSQL_DB}")
-            self.conn.database = Config.MYSQL_DB
+            self.cursor = self.conn.cursor()
+            self.cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database}")
+            self.cursor.execute(f"USE {database}")
+            self.conn.database = database
         except mysql.connector.Error as err:
-            print(f"Connection error: {err}")
-            raise
+            raise Exception(f"Connection error: {err}")
 
     def execute_query(self, query, params=None):
         try:
+            # Set a query timeout (MySQL-specific)
+            self.cursor.execute("SET SESSION max_execution_time = 30000")  # 30 seconds in milliseconds
             self.cursor.execute(query, params or ())
             if query.strip().upper().startswith('SELECT'):
                 result = self.cursor.fetchall()
-                columns = [desc[0] for desc in self.cursor.description]  # Get column names
-                return {"rows": result, "columns": columns}  # Return dict with rows and columns
+                columns = [desc[0] for desc in self.cursor.description]
+                return {"rows": result, "columns": columns}
             self.conn.commit()
             return None
         except mysql.connector.Error as err:
@@ -32,7 +33,7 @@ class DBConnection:
 
     def get_schemas(self):
         self.cursor.execute("SHOW SCHEMAS")
-        return [row[0] for row in self.cursor.fetchall() if row[0] not in ['information_schema', 'mysql', 'performance_schema', 'sys', Config.MYSQL_DB]]
+        return [row[0] for row in self.cursor.fetchall() if row[0] not in ['information_schema', 'mysql', 'performance_schema', 'sys', self.conn.database]]
 
     def get_tables(self, schema):
         self.cursor.execute(f"SHOW TABLES FROM {schema}")
