@@ -2,8 +2,14 @@ from langchain.prompts import PromptTemplate
 from config.config import Config
 from database.db_connection import DBConnection
 import streamlit as st
+import time
+from groq import GroqError
+from utils.logger import Logger
 
 class QueryParserAgent:
+    def __init__(self):
+        self.logger = Logger()
+
     def parse_query(self, user_input, schema_name):
         return self._generate_query(user_input, schema_name, invert=False)
 
@@ -11,9 +17,8 @@ class QueryParserAgent:
         return self._generate_query(original_query, schema_name, invert=True)
 
     def _generate_query(self, query_input, schema_name, invert=False):
-        db = DBConnection()
+        db = DBConnection(**st.session_state.db_params)
         try:
-            # Gather context
             schemas = db.get_schemas()
             tables = db.get_tables(schema_name) if schema_name in schemas else []
             context = {
@@ -23,7 +28,6 @@ class QueryParserAgent:
                 "columns": {table: db.get_columns(schema_name, table) for table in tables}
             }
 
-            # Complete the prompt with column name correction
             completed_prompt = self._complete_prompt(query_input, context) if not invert else query_input
             prompt_template = """
             Given this {mode} query: '{query}' and the database context: {context},
@@ -68,21 +72,34 @@ class QueryParserAgent:
                 mode=mode,
                 task=task
             )
-            response = Config.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": formatted_prompt}]
-            )
+
+            self.logger.debug("Sending request to GROQ API...")
+            start_time = time.time()
+            try:
+                response = st.session_state.config.get_groq_client().chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": formatted_prompt}],
+                    timeout=30
+                )
+                elapsed_time = time.time() - start_time
+                self.logger.debug(f"GROQ API response received in {elapsed_time:.2f} seconds")
+            except GroqError as e:
+                self.logger.error(f"GROQ API error: {str(e)}")
+                return f"CLARIFY: GROQ API error: {str(e)}"
+            except Exception as e:
+                self.logger.error(f"GROQ API timeout or error: {str(e)}")
+                return f"CLARIFY: GROQ API timeout or error: {str(e)}"
+
             sql_query = response.choices[0].message.content.strip()
             
-            # Clean up any unwanted formatting
             sql_query = sql_query.replace("```sql", "").replace("```", "").replace("\n", " ").strip()
             
-            # Debug: Log the raw SQL query for inspection
             if not invert:
-                st.session_state.results.append({"status": "debug", "message": f"Raw SQL Query: {sql_query}"})
+                self.logger.debug(f"Raw SQL Query: {sql_query}")
             
             return sql_query
         except Exception as e:
+            self.logger.error(f"Query parsing error: {str(e)}")
             return f"CLARIFY: Unable to parse query due to {str(e)}. Please provide more details."
         finally:
             db.close()
@@ -90,13 +107,11 @@ class QueryParserAgent:
     def _complete_prompt(self, user_input, context):
         lower_input = user_input.lower()
         
-        # Handle CSV upload
         if ("upload csv" in lower_input or "from csv" in lower_input or "load data" in lower_input) and "file_content" in st.session_state:
             return f"{user_input} with content: {st.session_state['file_content']}"
         elif "upload csv" in lower_input or "from csv" in lower_input or "load data" in lower_input:
             return "CLARIFY: Please upload a CSV file first."
 
-        # Extract table name safely
         table_name = None
         for keyword in ["table", "into", "from", "update"]:
             if keyword in lower_input:
@@ -108,11 +123,9 @@ class QueryParserAgent:
         if not table_name:
             return user_input
         
-        # Handle table creation
         if "create" in lower_input and table_name not in context["tables"]:
             return f"{user_input} with columns inferred from context if needed"
 
-        # Column name correction and query completion
         if table_name in context["tables"]:
             columns = context["columns"][table_name]
             data_part = lower_input.split("where")[0] if "where" in lower_input else lower_input
