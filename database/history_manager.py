@@ -2,6 +2,7 @@ from database.db_connection import DBConnection
 import streamlit as st
 import json
 import re
+from datetime import date, datetime
 
 class HistoryManager:
     def __init__(self):
@@ -10,6 +11,16 @@ class HistoryManager:
         self.create_history_table()
         self.create_state_history_table()
         self.update_state_history_schema()
+
+    def _serialize_state_data(self, data):
+        """Recursively convert non-JSON-serializable objects to strings."""
+        if isinstance(data, (date, datetime)):
+            return data.isoformat()
+        elif isinstance(data, list):
+            return [self._serialize_state_data(item) for item in data]
+        elif isinstance(data, dict):
+            return {key: self._serialize_state_data(value) for key, value in data.items()}
+        return data
 
     def create_history_table(self):
         query = """
@@ -62,7 +73,8 @@ class HistoryManager:
 
         if operation_type and table_name and state_data is not None:
             query = "INSERT INTO query_state_history (version_id, operation_type, table_name, state_data) VALUES (%s, %s, %s, %s)"
-            self.db.execute_query(query, (version_id, operation_type, table_name, json.dumps(state_data)))
+            serialized_data = self._serialize_state_data(state_data)
+            self.db.execute_query(query, (version_id, operation_type, table_name, json.dumps(serialized_data)))
 
         return version_id
 
@@ -109,8 +121,11 @@ class HistoryManager:
                     result = db.execute_query(select_query)
                     state_data = result["rows"] if result else []
                 except Exception as e:
+                    db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for UPDATE: {str(e)}"
-        
+                finally:
+                    db.reset_cursor()  # Ensure cursor is clean
+                
         elif sql_query_lower.startswith("insert"):
             operation_type = "INSERT"
             match = re.match(r"insert\s+into\s+(\w+\.\w+|\w+)\s+", sql_query_lower, re.IGNORECASE)
@@ -129,7 +144,10 @@ class HistoryManager:
                     result = db.execute_query(select_query)
                     state_data = result["rows"] if result else []
                 except Exception as e:
+                    db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for DELETE: {str(e)}"
+                finally:
+                    db.reset_cursor()  # Ensure cursor is clean
         
         elif sql_query_lower.startswith("drop table"):
             operation_type = "DROP_TABLE"
@@ -140,13 +158,20 @@ class HistoryManager:
                     columns = db.get_columns(schema_name, table_name.split(".")[-1])
                     select_query = f"SELECT * FROM {table_name}"
                     result = db.execute_query(select_query)
+                    # Fetch column types using execute_query
+                    col_query = f"SHOW COLUMNS FROM {table_name}"
+                    col_result = db.execute_query(col_query)
+                    column_types = [row[1] for row in col_result["rows"]]
                     state_data = {
                         "columns": columns,
                         "data": result["rows"] if result else [],
-                        "column_types": [row[1] for row in db.cursor.execute(f"SHOW COLUMNS FROM {table_name}")]
+                        "column_types": column_types
                     }
                 except Exception as e:
+                    db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for DROP TABLE: {str(e)}"
+                finally:
+                    db.reset_cursor()  # Ensure cursor is clean
         
         elif sql_query_lower.startswith("alter table"):
             operation_type = "ALTER"
@@ -161,7 +186,10 @@ class HistoryManager:
                         return None, None, None, f"Failed to capture state for ALTER: No columns found in {table_name}"
                     state_data = {"old_column": old_col, "new_column": new_col, "columns": columns}
                 except Exception as e:
+                    db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for ALTER: {str(e)}"
+                finally:
+                    db.reset_cursor()  # Ensure cursor is clean
             else:
                 return operation_type, None, None, None  # Allow ALTER to proceed
 
