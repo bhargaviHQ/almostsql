@@ -162,7 +162,39 @@ def main():
     if "config" not in st.session_state:
         st.session_state.config = Config(st.session_state.groq_api_key)
 
-    st.title("SQL Chat Application")
+    # Custom CSS for title and query output
+    st.markdown("""
+        <style>
+        .almostsql-title {
+            font-size: 28px !important;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .sql-query {
+            background-color: #f8f9fa;
+            color: #2c3e50;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+        .sql-query pre {
+            margin: 0;
+            color: inherit;
+            background: transparent;
+        }
+        @media (prefers-color-scheme: dark) {
+            .sql-query {
+                color: inherit;
+                background: transparent;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="almostsql-title">AlmostSQL</div>', unsafe_allow_html=True)
     
     if 'controller' not in st.session_state:
         st.session_state.controller = ControllerAgent()
@@ -174,15 +206,26 @@ def main():
         st.session_state.pending_query = None
     if 'input_value' not in st.session_state:
         st.session_state.input_value = ""
+    if 'new_schema_input' not in st.session_state:
+        st.session_state.new_schema_input = ""
     
     # Sidebar controls
     available_schemas = get_available_schemas(db_params)
     schema_name = st.sidebar.selectbox("Select Schema", available_schemas, key="schema_select")
     
-    new_schema = st.sidebar.text_input("Create new schema:")
+    new_schema = st.sidebar.text_input("Create new schema:", key="new_schema_input")
     if new_schema and st.sidebar.button("Create Schema"):
-        create_schema(new_schema.lower(), db_params)
-        st.rerun()
+        if not re.match(r"^[a-zA-Z0-9_]+$", new_schema):
+            st.sidebar.error("Schema name must contain only letters, numbers, or underscores.")
+        else:
+            try:
+                create_schema(new_schema.lower(), db_params)
+                # Clear only after rerun
+                del st.session_state["new_schema_input"]  # Remove key safely
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Error creating schema: {str(e)}")
+
     
     csv_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
     if csv_file is not None:
@@ -192,7 +235,7 @@ def main():
     st.sidebar.subheader(f"Tables in {schema_name}")
     db = DBConnection(**db_params)
     try:
-        tables = db.get_tables(schema_name)
+        tables = sorted(db.get_tables(schema_name))  # Sort tables alphabetically
         if not tables:
             st.sidebar.write("No tables found in this schema.")
         else:
@@ -214,14 +257,29 @@ def main():
                 font-weight: bold;
                 color: #2c3e50;
             }
+            .schema-table .key-indicator {
+                color: #e74c3c;
+                font-size: 12px;
+                margin-left: 5px;
+            }
             </style>
             <div class="schema-table">
             """
             for table in tables:
                 html += f"<p><span class='table-name'>{table}</span></p><ul>"
                 columns = db.get_columns(schema_name, table)
+                key_info = db.get_column_keys(schema_name, table)
                 for col in columns:
-                    html += f"<li>{col}</li>"
+                    key_label = ""
+                    if col in key_info:
+                        key_types = key_info[col]
+                        if "PRIMARY KEY" in key_types:
+                            key_label += " (PK)"
+                        if "FOREIGN KEY" in key_types:
+                            key_label += " (FK)"
+                        if "INDEX" in key_types and not ("PRIMARY KEY" in key_types or "FOREIGN KEY" in key_types):
+                            key_label += " (INDEX)"
+                    html += f"<li>{col}<span class='key-indicator'>{key_label}</span></li>"
                 html += "</ul>"
             html += "</div>"
             st.sidebar.markdown(html, unsafe_allow_html=True)
@@ -248,19 +306,19 @@ def main():
             st.success("Query executed successfully")
             if "result" in latest_result:
                 st.markdown(format_html_table(latest_result.get("result", "No output")), unsafe_allow_html=True)
-                st.write("SQL Query:", latest_result["sql_query"])
-                st.write("Learning Output:", latest_result["learning_output"])
+                st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="sql-query"><pre>Learning Output: {latest_result["learning_output"]}</pre></div>', unsafe_allow_html=True)
             else:
-                st.write("Original SQL Query:", latest_result["sql_query"])
-                st.write("Inverse Query Executed:", latest_result["inverse_query"])
+                st.markdown(f'<div class="sql-query"><pre>Original SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="sql-query"><pre>Inverse Query Executed: {latest_result["inverse_query"]}</pre></div>', unsafe_allow_html=True)
         elif latest_result["status"] == "error":
             st.error(latest_result["message"])
         elif latest_result["status"] == "clarification_needed":
             st.warning(latest_result["message"])
         elif latest_result["status"] == "confirmation_needed":
             st.warning("Confirmation required")
-            st.write("SQL Query:", latest_result["sql_query"])
-            if st.sidebar.button("Confirm Execution", key=f"confirm_{latest_result['sql_query']}"):
+            st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+            if st.button("Confirm Execution", key=f"confirm_{latest_result['sql_query']}"):
                 with st.spinner("Executing confirmed query..."):
                     try:
                         db = DBConnection(**db_params)
@@ -305,9 +363,9 @@ def main():
                     st.session_state.controller.history.clear_history()
                     st.rerun()
             
-            for version_id, user_q, sql_q, timestamp, schema_name in history:
+            for index, (version_id, user_q, sql_q, timestamp, schema_name) in enumerate(history):
                 st.write(f"Version {version_id} ({timestamp}): {user_q} (Schema: {schema_name or 'Unknown'})")
-                if st.button(f"Revert to Version {version_id}", key=f"revert_{version_id}"):
+                if st.button(f"Revert to Version {version_id}", key=f"revert_{version_id}_{index}"):
                     with st.spinner("Reverting to version..."):
                         revert_result = st.session_state.controller.revert_to_version(version_id)
                         st.session_state.results = [revert_result]
