@@ -3,6 +3,7 @@ from agents.controller_agent import ControllerAgent
 from database.db_connection import DBConnection
 from config.config import Config
 from utils.logger import Logger
+import re
 
 def get_available_schemas(db_params):
     db = DBConnection(**db_params)
@@ -19,11 +20,15 @@ def create_schema(schema_name, db_params):
         db.close()
 
 def format_html_table(table_data):
-    if isinstance(table_data, str) or not table_data:
+    if isinstance(table_data, str):
         return f"<p>{table_data or 'No results found'}</p>"
     
-    rows = table_data["rows"]
+    # Ensure table_data is a dict with columns and rows
+    if not isinstance(table_data, dict) or "columns" not in table_data or "rows" not in table_data:
+        return "<p>Invalid result format</p>"
+    
     columns = table_data["columns"]
+    rows = table_data["rows"]
     
     total_rows = len(rows)
     display_rows = rows[:50] if total_rows > 50 else rows
@@ -73,8 +78,11 @@ def format_html_table(table_data):
     <tr>"""
     html += "".join(f"<th>{col}</th>" for col in columns)
     html += "</tr></thead><tbody>"
-    for row in display_rows:
-        html += "<tr>" + "".join(f"<td>{str(val)}</td>" for val in row) + "</tr>"
+    if not display_rows:
+        html += "<tr><td colspan='{}' style='text-align: center;'>No data returned</td></tr>".format(len(columns))
+    else:
+        for row in display_rows:
+            html += "<tr>" + "".join(f"<td>{str(val)}</td>" for val in row) + "</tr>"
     html += "</tbody></table></div>"
     html += row_limit_message
     return html
@@ -167,10 +175,9 @@ def main():
     
     if st.button("Submit Query") and user_input and schema_name:
         with st.spinner("Processing your query..."):
-            st.session_state.results = []
-            result = st.session_state.controller.process_query(user_input, schema_name)
-            st.session_state.results.append(result)
-            if result["status"] != "confirmation_needed":
+            new_result = st.session_state.controller.process_query(user_input, schema_name)
+            st.session_state.results = [new_result]
+            if new_result["status"] != "confirmation_needed":
                 st.session_state.input_value = ""
 
     if st.session_state.results:
@@ -195,24 +202,35 @@ def main():
                 with st.spinner("Executing confirmed query..."):
                     try:
                         db = DBConnection(**db_params)
-                        result_exec = db.execute_query(latest_result["sql_query"])
-                        version_id = st.session_state.controller.history.save_query(
-                            st.session_state.pending_query["input"], 
-                            latest_result["sql_query"], 
-                            schema_name
-                        )
-                        st.session_state.results = [{
-                            "status": "success",
-                            "result": result_exec,
-                            "sql_query": latest_result["sql_query"],
-                            "learning_output": f"For your request: '{st.session_state.pending_query['input']}'\nGenerated SQL: {latest_result['sql_query']}",
-                            "version_id": version_id
-                        }]
-                        st.session_state.confirm_needed = False
-                        st.session_state.pending_query = None
-                        st.session_state.input_value = ""
+                        operation_type, table_name, state_data, state_error = st.session_state.controller.history.capture_state(latest_result["sql_query"], schema_name)
+                        if state_error:
+                            st.session_state.results = [{"status": "error", "message": state_error}]
+                            st.error(state_error)
+                        else:
+                            result_exec = db.execute_query(latest_result["sql_query"])
+                            st.success("Query executed successfully")
+                            version_id = st.session_state.controller.history.save_query(
+                                st.session_state.pending_query["input"], 
+                                latest_result["sql_query"], 
+                                schema_name,
+                                operation_type,
+                                table_name,
+                                state_data
+                            )
+                            st.session_state.results = [{
+                                "status": "success",
+                                "result": result_exec,
+                                "sql_query": latest_result["sql_query"],
+                                "learning_output": f"For your request: '{st.session_state.pending_query['input']}'\nGenerated SQL: {latest_result['sql_query']}",
+                                "version_id": version_id
+                            }]
+                            st.session_state.confirm_needed = False
+                            st.session_state.pending_query = None
+                            st.session_state.input_value = ""
                     except Exception as e:
                         st.session_state.results = [{"status": "error", "message": f"Error executing confirmed query: {str(e)}"}]
+                        st.error(f"Error: {str(e)}")
+                if st.session_state.results[-1]["status"] == "error":
                     st.rerun()
     
     with st.expander("Query History"):
@@ -229,7 +247,8 @@ def main():
                     with st.spinner("Reverting to version..."):
                         revert_result = st.session_state.controller.revert_to_version(version_id)
                         st.session_state.results = [revert_result]
-                        st.rerun()
+                        if revert_result["status"] == "error":
+                            st.rerun()
 
 if __name__ == "__main__":
     main()
