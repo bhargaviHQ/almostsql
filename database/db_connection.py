@@ -1,48 +1,40 @@
 import mysql.connector
-from mysql.connector import errorcode
+import streamlit as st
 
 class DBConnection:
-    def __init__(self, host, user, password, database):
-        try:
-            self.conn = mysql.connector.connect(
-                host=host,
-                user=user,
-                password=password,
-                connection_timeout=30  # 30-second timeout for connection
-            )
-            self.cursor = self.conn.cursor()
-            self.cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database}")
-            self.cursor.execute(f"USE {database}")
-            self.conn.database = database
-        except mysql.connector.Error as err:
-            raise Exception(f"Connection error: {err}")
+    def __init__(self, **db_params):
+        self.connection = mysql.connector.connect(**db_params)
+        self.connection.autocommit = True
+        self.cursor = self.connection.cursor()
 
     def execute_query(self, query, params=None):
         try:
-            # Set a query timeout (MySQL-specific)
-            self.cursor.execute("SET SESSION max_execution_time = 30000")  # 30 seconds in milliseconds
-            self.cursor.execute(query, params or ())
-            if query.strip().upper().startswith('SELECT'):
-                result = self.cursor.fetchall()
-                columns = [desc[0] for desc in self.cursor.description]
-                return {"rows": result, "columns": columns}
-            self.conn.commit()
-            return None
-        except mysql.connector.Error as err:
-            raise err
+            if params:
+                self.cursor.execute(query, params)
+            else:
+                self.cursor.execute(query)
+            if query.strip().upper().startswith("SELECT"):
+                columns = [col[0] for col in self.cursor.description]
+                rows = self.cursor.fetchall()
+                return {"columns": columns, "rows": rows}
+            else:
+                self.connection.commit()
+                return {"columns": ["AffectedRows"], "rows": [[self.cursor.rowcount]]}
+        except Exception as e:
+            raise e
 
     def get_schemas(self):
-        self.cursor.execute("SHOW SCHEMAS")
-        return [row[0] for row in self.cursor.fetchall() if row[0] not in ['information_schema', 'mysql', 'performance_schema', 'sys', self.conn.database]]
-
-    def get_tables(self, schema):
-        self.cursor.execute(f"SHOW TABLES FROM {schema}")
+        self.cursor.execute("SHOW DATABASES")
         return [row[0] for row in self.cursor.fetchall()]
 
-    def get_columns(self, schema, table):
-        self.cursor.execute(f"SHOW COLUMNS FROM {schema}.{table}")
+    def get_tables(self, schema_name):
+        self.cursor.execute(f"SHOW TABLES FROM {schema_name}")
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def get_columns(self, schema_name, table_name):
+        self.cursor.execute(f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", (schema_name, table_name))
         return [row[0] for row in self.cursor.fetchall()]
 
     def close(self):
         self.cursor.close()
-        self.conn.close()
+        self.connection.close()
