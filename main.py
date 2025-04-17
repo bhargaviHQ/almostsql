@@ -306,8 +306,27 @@ def main():
             st.success("Query executed successfully")
             if "result" in latest_result:
                 st.markdown(format_html_table(latest_result.get("result", "No output")), unsafe_allow_html=True)
-                st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="sql-query"><pre>Learning Output: {latest_result["learning_output"]}</pre></div>', unsafe_allow_html=True)
+                #st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+                # st.markdown("**SQL Query:**")
+                # st.markdown(f"""```sql
+                # {latest_result["sql_query"]}
+                # """)
+                learning_output = latest_result["learning_output"]
+
+                with st.expander("Learning Output"):
+                    if "Generated SQL:" in learning_output:
+                        user_request, sql_part = learning_output.split("Generated SQL:", 1)
+                        st.markdown(f"{user_request.strip()}")
+                        st.markdown("**Generated SQL:**")
+                        st.markdown(f"""```sql
+                {sql_part.strip()}
+                """)
+                    else:
+                        st.markdown(f"""```text
+                {learning_output}
+                ```""")
+
+                #st.markdown(f'<div class="sql-query"><pre>Learning Output: {latest_result["learning_output"]}</pre></div>', unsafe_allow_html=True)
             else:
                 st.markdown(f'<div class="sql-query"><pre>Original SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="sql-query"><pre>Inverse Query Executed: {latest_result["inverse_query"]}</pre></div>', unsafe_allow_html=True)
@@ -317,7 +336,11 @@ def main():
             st.warning(latest_result["message"])
         elif latest_result["status"] == "confirmation_needed":
             st.warning("Confirmation required")
-            st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+            #st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+            st.markdown("**SQL Query:**")
+            st.markdown(f"""```sql
+            {latest_result["sql_query"]}
+                """)
             if st.button("Confirm Execution", key=f"confirm_{latest_result['sql_query']}"):
                 with st.spinner("Executing confirmed query..."):
                     try:
