@@ -51,9 +51,11 @@ class QueryParserAgent:
                 task = """
                 generate the inverse MySQL query to undo the operation.
                 - For CREATE TABLE, generate DROP TABLE.
-                - For INSERT, generate DELETE with the same conditions.
-                - For UPDATE, generate an UPDATE that reverses the SET clause (if possible).
-                - For DROP TABLE, generate CREATE TABLE (if schema is known).
+                - For INSERT, generate DELETE with the same conditions (if conditions are known).
+                - For UPDATE, generate an UPDATE that reverses the SET clause (requires prior values).
+                - For DROP TABLE, generate CREATE TABLE (requires schema information).
+                - For DELETE, generate INSERT with the deleted rows (requires row data).
+                - For ALTER TABLE RENAME COLUMN, generate ALTER TABLE to rename back.
                 - If the inverse operation is not feasible (e.g., due to missing prior state), return 'CLARIFY: Cannot generate inverse query due to missing state information.'
                 """
             else:
