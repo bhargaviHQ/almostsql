@@ -2,7 +2,7 @@ import streamlit as st
 from agents.controller_agent import ControllerAgent
 from database.db_connection import DBConnection
 from config.config import Config
-from utils.logger import Logger
+import mysql.connector
 import re
 
 def get_available_schemas(db_params):
@@ -23,7 +23,6 @@ def format_html_table(table_data):
     if isinstance(table_data, str):
         return f"<p>{table_data or 'No results found'}</p>"
     
-    # Ensure table_data is a dict with columns and rows
     if not isinstance(table_data, dict) or "columns" not in table_data or "rows" not in table_data:
         return "<p>Invalid result format</p>"
     
@@ -100,17 +99,23 @@ def setup_connection_details():
     if "db_password" not in st.session_state:
         st.session_state.db_password = ""
     if "db_name" not in st.session_state:
-        st.session_state.db_name = "sql_chat_db"
-    if "connection_setup" not in st.session_state:
-        st.session_state.connection_setup = False
+        st.session_state.db_name = ""
 
     groq_api_key = st.text_input("GROQ API Key", value=st.session_state.groq_api_key, type="password")
     db_host = st.text_input("Database Host", value=st.session_state.db_host)
     db_user = st.text_input("Database User", value=st.session_state.db_user)
     db_password = st.text_input("Database Password", value=st.session_state.db_password, type="password")
-    db_name = st.text_input("Database Name", value=st.session_state.db_name)
+    db_name = st.text_input("Database Name", value=st.session_state.db_name, placeholder="Enter your preferred schema name")
 
     if st.button("Save and Proceed"):
+        if not db_name:
+            st.error("Please enter a database name.")
+            return
+        # Validate schema name (basic check for SQL safety)
+        if not re.match(r"^[a-zA-Z0-9_]+$", db_name):
+            st.error("Database name must contain only letters, numbers, or underscores.")
+            return
+
         st.session_state.groq_api_key = groq_api_key
         st.session_state.db_host = db_host
         st.session_state.db_user = db_user
@@ -118,6 +123,20 @@ def setup_connection_details():
         st.session_state.db_name = db_name
         
         try:
+            # Connect without database to check/create the schema
+            temp_params = {
+                "host": db_host,
+                "user": db_user,
+                "password": db_password
+            }
+            conn = mysql.connector.connect(**temp_params)
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            # Connect with the specified schema
             db_params = {
                 "host": db_host,
                 "user": db_user,
@@ -129,10 +148,10 @@ def setup_connection_details():
             st.session_state.connection_setup = True
             st.session_state.db_params = db_params
             st.session_state.config = Config(groq_api_key)
-            st.success("Connection details saved successfully!")
+            st.success(f"Connection established and schema '{db_name}' created if it didn't exist!")
             st.rerun()
         except Exception as e:
-            st.error(f"Failed to connect to the database: {str(e)}")
+            st.error(f"Failed to connect or create schema: {str(e)}")
 
 def main():
     if not st.session_state.get("connection_setup", False):
@@ -156,6 +175,7 @@ def main():
     if 'input_value' not in st.session_state:
         st.session_state.input_value = ""
     
+    # Sidebar controls
     available_schemas = get_available_schemas(db_params)
     schema_name = st.sidebar.selectbox("Select Schema", available_schemas, key="schema_select")
     
@@ -167,6 +187,48 @@ def main():
     csv_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
     if csv_file is not None:
         st.session_state.file_content = csv_file.read().decode("utf-8")
+    
+    # Display tables and columns in the sidebar
+    st.sidebar.subheader(f"Tables in {schema_name}")
+    db = DBConnection(**db_params)
+    try:
+        tables = db.get_tables(schema_name)
+        if not tables:
+            st.sidebar.write("No tables found in this schema.")
+        else:
+            html = """
+            <style>
+            .schema-table {
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 14px;
+                margin: 10px 0;
+            }
+            .schema-table ul {
+                list-style-type: none;
+                padding-left: 20px;
+            }
+            .schema-table li {
+                margin: 5px 0;
+            }
+            .schema-table .table-name {
+                font-weight: bold;
+                color: #2c3e50;
+            }
+            </style>
+            <div class="schema-table">
+            """
+            for table in tables:
+                html += f"<p><span class='table-name'>{table}</span></p><ul>"
+                columns = db.get_columns(schema_name, table)
+                for col in columns:
+                    html += f"<li>{col}</li>"
+                html += "</ul>"
+            html += "</div>"
+            st.sidebar.markdown(html, unsafe_allow_html=True)
+    except Exception as e:
+        st.sidebar.error(f"Error fetching schema metadata: {str(e)}")
+    finally:
+        db.close()
     
     user_input = st.text_area("Enter your query:", 
                             value=st.session_state.input_value,
@@ -230,6 +292,8 @@ def main():
                     except Exception as e:
                         st.session_state.results = [{"status": "error", "message": f"Error executing confirmed query: {str(e)}"}]
                         st.error(f"Error: {str(e)}")
+                    finally:
+                        db.close()
                 if st.session_state.results[-1]["status"] == "error":
                     st.rerun()
     
