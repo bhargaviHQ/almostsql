@@ -1,6 +1,10 @@
-userid, username, dateofbirth, location, gender
-2, Henry,2010-05-09,CA,M
-3, Jack,2014-05-09,NY,M
-4, Joe,2015-05-09,GA,M
-5, Alpha,2016-05-09,TX,F
-6, Louis,2016-05-09,WA,M
+bali,indonesia,0,1,1800
+nice,france,0,2,2500
+kauai,usa,0,1,2200
+barcelona,spain,0,3,2400
+gold coast,australia,0,2,2700
+phuket,thailand,0,2,1600
+tulum,mexico,0,3,2000
+zanzibar,tanzania,0,4,2300
+maldives,maldives,0,1,3500
+rio de janeiro,brazil,0,3,2100
