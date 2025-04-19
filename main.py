@@ -4,6 +4,7 @@ from database.db_connection import DBConnection
 from config.config import Config
 import mysql.connector
 import re
+import datetime
 
 def get_available_schemas(db_params):
     db = DBConnection(**db_params)
@@ -18,7 +19,19 @@ def create_schema(schema_name, db_params):
         db.execute_query(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
     finally:
         db.close()
+def serialize_result(result):
+    def convert_dates(obj):
+        if isinstance(obj, (datetime.date, datetime.datetime)):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {key: convert_dates(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_dates(item) for item in obj]
+        elif isinstance(obj, tuple):
+            return tuple(convert_dates(item) for item in obj)
+        return obj
 
+    return convert_dates(result)
 def format_html_table(table_data):
     if isinstance(table_data, str):
         return f"<p>{table_data or 'No results found'}</p>"
@@ -346,6 +359,7 @@ def main():
                             st.session_state.results = [{"status": "error", "message": state_error}]
                         else:
                             result_exec = db.execute_query(latest_result["sql_query"])
+                            result_exec_serialized = serialize_result(result_exec)  # Serialize result_exec
                             version_id = st.session_state.controller.history.save_query(
                                 st.session_state.pending_query["input"],
                                 latest_result["sql_query"],
@@ -356,7 +370,7 @@ def main():
                             )
                             st.session_state.results = [{
                                 "status": "success",
-                                "result": result_exec,
+                                "result": result_exec_serialized,
                                 "sql_query": latest_result["sql_query"],
                                 "learning_output": f"For your request: '{st.session_state.pending_query['input']}'\nGenerated SQL: {latest_result['sql_query']}",
                                 "version_id": version_id
@@ -373,9 +387,9 @@ def main():
                         db.close()
                     if st.session_state.results[-1]["status"] == "error":
                         st.rerun()
-
     with st.expander("Query History"):
         history = st.session_state.controller.history.get_history()
+        print("History data:", history)  # Debug print
         if history:
             if st.button("Clear History"):
                 with st.spinner("Clearing history..."):
@@ -383,11 +397,19 @@ def main():
                     st.rerun()
             
             for index, (version_id, user_q, sql_q, timestamp, schema_name) in enumerate(history):
+                print(f"History entry {index}:", {
+                    "version_id": version_id,
+                    "user_query": user_q,
+                    "sql_query": sql_q,
+                    "timestamp": timestamp,
+                    "schema_name": schema_name
+                })  # Debug print
                 st.write(f"Version {version_id} ({timestamp}): {user_q} (Schema: {schema_name or 'Unknown'})")
                 if st.button(f"Revert to Version {version_id}", key=f"revert_{version_id}_{index}"):
                     with st.spinner("Reverting to version..."):
                         revert_result = st.session_state.controller.revert_to_version(version_id)
-                        st.session_state.results = [revert_result]
+                        st.session_state.results = [serialize_result(revert_result)]  # Serialize revert_result
+                        print("Revert result:", revert_result)  # Debug print
                         if revert_result["status"] == "error":
                             st.rerun()
 
