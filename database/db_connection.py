@@ -1,11 +1,30 @@
 import mysql.connector
 import streamlit as st
+from datetime import date, datetime
+from decimal import Decimal
 
 class DBConnection:
     def __init__(self, **db_params):
         self.connection = mysql.connector.connect(**db_params)
         self.connection.autocommit = True
         self.cursor = self.connection.cursor()
+
+    def _serialize_result(self, result):
+        """Recursively serialize datetime and Decimal objects to JSON-compatible types."""
+        def convert_dates_and_decimals(obj):
+            if isinstance(obj, (date, datetime)):
+                return obj.isoformat()
+            elif isinstance(obj, Decimal):
+                return str(obj)  # Convert Decimal to string to preserve precision
+                # Alternative: return float(obj) if you prefer float
+            elif isinstance(obj, dict):
+                return {key: convert_dates_and_decimals(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_dates_and_decimals(item) for item in obj]
+            elif isinstance(obj, tuple):
+                return tuple(convert_dates_and_decimals(item) for item in obj)
+            return obj
+        return convert_dates_and_decimals(result)
 
     def reset_cursor(self):
         """Reset cursor state by consuming unread results and creating a new cursor."""
@@ -34,10 +53,11 @@ class DBConnection:
                 # Ensure all results are consumed
                 while self.cursor.nextset():
                     pass
-                return {"columns": columns, "rows": rows}
+                result = {"columns": columns, "rows": rows}
             else:  # No result set (e.g., INSERT, UPDATE, DELETE)
                 self.connection.commit()
-                return {"columns": ["AffectedRows"], "rows": [[self.cursor.rowcount]]}
+                result = {"columns": ["AffectedRows"], "rows": [[self.cursor.rowcount]]}
+            return self._serialize_result(result)
         except Exception as e:
             self.reset_cursor()  # Reset cursor on error to prevent lingering results
             raise e
