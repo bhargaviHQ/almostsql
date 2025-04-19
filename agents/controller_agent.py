@@ -6,6 +6,7 @@ from database.db_connection import DBConnection
 import streamlit as st
 from utils.logger import Logger
 import re
+import datetime
 
 class ControllerAgent:
     def __init__(self):
@@ -56,6 +57,19 @@ class ControllerAgent:
             self.logger.error(f"Error executing query: {str(e)}")
             return {"status": "error", "message": f"Error executing query: {str(e)}"}
 
+    def _serialize_result(self, result):
+        def convert_dates(obj):
+            if isinstance(obj, (datetime.date, datetime.datetime)):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {key: convert_dates(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_dates(item) for item in obj]
+            elif isinstance(obj, tuple):
+                return tuple(convert_dates(item) for item in obj)
+            return obj
+        return convert_dates(result)
+
     def revert_to_version(self, version_id):
         self.logger.debug(f"Starting revert_to_version for version_id: {version_id}")
         
@@ -100,30 +114,31 @@ class ControllerAgent:
                     self.logger.debug(f"Executing: {inverse_query} with params {params}")
                     db.execute_query(inverse_query, params)
                 
-                return {
+                result = {
                     "status": "success",
                     "message": f"Reverted version {version_id} by restoring prior state",
                     "sql_query": sql_query,
                     "inverse_query": "; ".join([q[0] for q in inverse_queries])
                 }
+                return self._serialize_result(result)
             
             elif operation_type == "INSERT" and state_data:
                 self.logger.debug("Reverting an INSERT query")
-                # Assume primary key is the first column
                 columns = db.get_columns(schema_name, table_name.split(".")[-1])
-                select_query = f"SELECT {columns[0]} FROM {table_name}"  # Fetch inserted IDs
+                select_query = f"SELECT {columns[0]} FROM {table_name}"
                 result = db.execute_query(select_query)
                 inserted_ids = [row[0] for row in result["rows"]]
                 
                 inverse_query = f"DELETE FROM {table_name} WHERE {columns[0]} IN ({','.join(['%s'] * len(inserted_ids))})"
                 db.execute_query(inverse_query, inserted_ids)
                 
-                return {
+                result = {
                     "status": "success",
                     "message": f"Reverted version {version_id} by deleting inserted rows",
                     "sql_query": sql_query,
                     "inverse_query": inverse_query
                 }
+                return self._serialize_result(result)
             
             elif operation_type == "DELETE" and state_data:
                 self.logger.debug("Reverting a DELETE query")
@@ -137,12 +152,13 @@ class ControllerAgent:
                 for inverse_query, params in inverse_queries:
                     db.execute_query(inverse_query, params)
                 
-                return {
+                result = {
                     "status": "success",
                     "message": f"Reverted version {version_id} by re-inserting deleted rows",
                     "sql_query": sql_query,
                     "inverse_query": "; ".join([q[0] for q in inverse_queries])
                 }
+                return self._serialize_result(result)
             
             elif operation_type == "DROP_TABLE" and state_data:
                 self.logger.debug("Reverting a DROP TABLE query")
@@ -156,24 +172,26 @@ class ControllerAgent:
                         insert_query = f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({','.join(['%s'] * len(row))})"
                         db.execute_query(insert_query, row)
                 
-                return {
+                result = {
                     "status": "success",
                     "message": f"Reverted version {version_id} by recreating table",
                     "sql_query": sql_query,
                     "inverse_query": create_query
                 }
+                return self._serialize_result(result)
             
             elif operation_type == "ALTER" and state_data:
                 self.logger.debug("Reverting an ALTER query (column rename)")
                 inverse_query = f"ALTER TABLE {table_name} RENAME COLUMN {state_data['new_column']} TO {state_data['old_column']}"
                 db.execute_query(inverse_query)
                 
-                return {
+                result = {
                     "status": "success",
                     "message": f"Reverted version {version_id} by restoring column name",
                     "sql_query": sql_query,
                     "inverse_query": inverse_query
                 }
+                return self._serialize_result(result)
             
             # Fallback to inverse query generation
             self.logger.debug("Falling back to inverse query generation")
@@ -183,12 +201,13 @@ class ControllerAgent:
                 return {"status": "error", "message": inverse_query[8:]}
             
             db.execute_query(inverse_query)
-            return {
+            result = {
                 "status": "success",
                 "message": f"Reverted version {version_id} by executing inverse query",
                 "sql_query": sql_query,
                 "inverse_query": inverse_query
             }
+            return self._serialize_result(result)
         except Exception as e:
             self.logger.error(f"Error reverting version {version_id}: {str(e)}")
             return {"status": "error", "message": f"Error reverting version {version_id}: {str(e)}"}
