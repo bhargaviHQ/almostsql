@@ -1,10 +1,15 @@
-bali,indonesia,0,1,1800
-nice,france,0,2,2500
-kauai,usa,0,1,2200
-barcelona,spain,0,3,2400
-gold coast,australia,0,2,2700
-phuket,thailand,0,2,1600
-tulum,mexico,0,3,2000
-zanzibar,tanzania,0,4,2300
-maldives,maldives,0,1,3500
-rio de janeiro,brazil,0,3,2100
+1006,205,2025-04-05,89.00,processing,credit_card,2025-04-10
+1007,206,2025-04-06,64.75,completed,paypal,2025-04-08
+1008,207,2025-04-06,32.99,returned,credit_card,2025-04-07
+1009,208,2025-04-07,199.99,completed,apple_pay,2025-04-11
+1010,209,2025-04-08,58.49,failed,credit_card,2025-04-12
+1011,210,2025-04-09,150.00,completed,debit_card,2025-04-13
+1012,211,2025-04-09,85.60,shipped,paypal,2025-04-14
+1013,212,2025-04-10,49.99,completed,credit_card,2025-04-12
+1014,213,2025-04-11,230.25,shipped,store_credit,2025-04-15
+1015,214,2025-04-11,109.40,processing,credit_card,2025-04-16
+1016,215,2025-04-12,98.75,completed,apple_pay,2025-04-14
+1017,216,2025-04-13,200.99,completed,debit_card,2025-04-17
+1018,217,2025-04-13,135.60,returned,credit_card,2025-04-15
+1019,218,2025-04-14,75.25,completed,paypal,2025-04-18
+1020,219,2025-04-15,58.00,failed,credit_card,2025-04-19
