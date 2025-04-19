@@ -306,11 +306,6 @@ def main():
             st.success("Query executed successfully")
             if "result" in latest_result:
                 st.markdown(format_html_table(latest_result.get("result", "No output")), unsafe_allow_html=True)
-                #st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
-                # st.markdown("**SQL Query:**")
-                # st.markdown(f"""```sql
-                # {latest_result["sql_query"]}
-                # """)
                 learning_output = latest_result["learning_output"]
 
                 with st.expander("Learning Output"):
@@ -319,14 +314,12 @@ def main():
                         st.markdown(f"{user_request.strip()}")
                         st.markdown("**Generated SQL:**")
                         st.markdown(f"""```sql
-                {sql_part.strip()}
-                """)
+                        {sql_part.strip()}
+                        """)
                     else:
                         st.markdown(f"""```text
-                {learning_output}
-                ```""")
-
-                #st.markdown(f'<div class="sql-query"><pre>Learning Output: {latest_result["learning_output"]}</pre></div>', unsafe_allow_html=True)
+                        {learning_output}
+                        ```""")
             else:
                 st.markdown(f'<div class="sql-query"><pre>Original SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="sql-query"><pre>Inverse Query Executed: {latest_result["inverse_query"]}</pre></div>', unsafe_allow_html=True)
@@ -335,26 +328,27 @@ def main():
         elif latest_result["status"] == "clarification_needed":
             st.warning(latest_result["message"])
         elif latest_result["status"] == "confirmation_needed":
-            st.warning("Confirmation required")
-            #st.markdown(f'<div class="sql-query"><pre>SQL Query: {latest_result["sql_query"]}</pre></div>', unsafe_allow_html=True)
+            st.warning("Confirmation required for the following query:")
             st.markdown("**SQL Query:**")
             st.markdown(f"""```sql
             {latest_result["sql_query"]}
-                """)
-            if st.button("Confirm Execution", key=f"confirm_{latest_result['sql_query']}"):
+            """)
+            # Use a unique key for the button to avoid Streamlit key conflicts
+            confirm_button_key = f"confirm_{latest_result['sql_query']}_{id(latest_result)}"
+            if st.button("Confirm Execution", key=confirm_button_key):
                 with st.spinner("Executing confirmed query..."):
                     try:
                         db = DBConnection(**db_params)
-                        operation_type, table_name, state_data, state_error = st.session_state.controller.history.capture_state(latest_result["sql_query"], schema_name)
+                        operation_type, table_name, state_data, state_error = st.session_state.controller.history.capture_state(
+                            latest_result["sql_query"], schema_name
+                        )
                         if state_error:
                             st.session_state.results = [{"status": "error", "message": state_error}]
-                            st.error(state_error)
                         else:
                             result_exec = db.execute_query(latest_result["sql_query"])
-                            st.success("Query executed successfully")
                             version_id = st.session_state.controller.history.save_query(
-                                st.session_state.pending_query["input"], 
-                                latest_result["sql_query"], 
+                                st.session_state.pending_query["input"],
+                                latest_result["sql_query"],
                                 schema_name,
                                 operation_type,
                                 table_name,
@@ -367,17 +361,19 @@ def main():
                                 "learning_output": f"For your request: '{st.session_state.pending_query['input']}'\nGenerated SQL: {latest_result['sql_query']}",
                                 "version_id": version_id
                             }]
+                            # Clear confirmation state
                             st.session_state.confirm_needed = False
                             st.session_state.pending_query = None
                             st.session_state.input_value = ""
+                            st.success("Query executed successfully")
+                            st.rerun()
                     except Exception as e:
                         st.session_state.results = [{"status": "error", "message": f"Error executing confirmed query: {str(e)}"}]
-                        st.error(f"Error: {str(e)}")
                     finally:
                         db.close()
-                if st.session_state.results[-1]["status"] == "error":
-                    st.rerun()
-    
+                    if st.session_state.results[-1]["status"] == "error":
+                        st.rerun()
+
     with st.expander("Query History"):
         history = st.session_state.controller.history.get_history()
         if history:
