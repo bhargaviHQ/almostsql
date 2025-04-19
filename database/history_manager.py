@@ -77,14 +77,25 @@ class HistoryManager:
             self.db.execute_query(query, (version_id, operation_type, table_name, json.dumps(serialized_data)))
 
         return version_id
-
+    
     def get_history(self):
         query = "SELECT version_id, user_query, sql_query, timestamp, schema_name FROM query_history ORDER BY version_id DESC"
         result = self.db.execute_query(query)
-        if result:
-            return [row if len(row) == 5 else (row[0], row[1], row[2], row[3], None) for row in result["rows"]]
+        if result and result.get("rows"):
+            history = []
+            for row in result["rows"]:
+                # Ensure row has at least 5 elements; pad with None if necessary
+                row = list(row) + [None] * (5 - len(row))
+                # Serialize timestamp (row[3])
+                timestamp = row[3]
+                if isinstance(timestamp, (date, datetime)):  # Fixed: Use date and datetime directly
+                    timestamp = timestamp.isoformat()
+                elif timestamp is None:
+                    timestamp = None
+                # Else, keep as is (e.g., if already a string)
+                history.append((row[0], row[1], row[2], timestamp, row[4]))
+            return history
         return []
-
     def get_query_by_version(self, version_id):
         query = "SELECT sql_query FROM query_history WHERE version_id = %s"
         result = self.db.execute_query(query, (version_id,))
@@ -95,7 +106,8 @@ class HistoryManager:
         result = self.db.execute_query(query, (version_id,))
         if result and result["rows"]:
             operation_type, table_name, state_data_json = result["rows"][0]
-            return operation_type, table_name, json.loads(state_data_json)
+            state_data = json.loads(state_data_json)
+            return operation_type, table_name, self._serialize_state_data(state_data)  # Serialize again
         return None, None, None
 
     def clear_history(self):
@@ -120,19 +132,21 @@ class HistoryManager:
                 try:
                     result = db.execute_query(select_query)
                     state_data = result["rows"] if result else []
+                    state_data = self._serialize_state_data(state_data)  # Serialize state_data
                 except Exception as e:
                     db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for UPDATE: {str(e)}"
                 finally:
                     db.reset_cursor()  # Ensure cursor is clean
-                
+                    
         elif sql_query_lower.startswith("insert"):
             operation_type = "INSERT"
             match = re.match(r"insert\s+into\s+(\w+\.\w+|\w+)\s+", sql_query_lower, re.IGNORECASE)
             if match:
                 table_name = match.group(1)
                 state_data = {"inserted": True}
-        
+                state_data = self._serialize_state_data(state_data)  # Serialize state_data
+            
         elif sql_query_lower.startswith("delete"):
             operation_type = "DELETE"
             match = re.match(r"delete\s+from\s+(\w+\.\w+|\w+)\s*(where\s+.*)?$", sql_query_lower, re.IGNORECASE)
@@ -143,12 +157,13 @@ class HistoryManager:
                 try:
                     result = db.execute_query(select_query)
                     state_data = result["rows"] if result else []
+                    state_data = self._serialize_state_data(state_data)  # Serialize state_data
                 except Exception as e:
                     db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for DELETE: {str(e)}"
                 finally:
                     db.reset_cursor()  # Ensure cursor is clean
-        
+            
         elif sql_query_lower.startswith("drop table"):
             operation_type = "DROP_TABLE"
             match = re.match(r"drop\s+table\s+(\w+\.\w+|\w+)", sql_query_lower, re.IGNORECASE)
@@ -167,12 +182,13 @@ class HistoryManager:
                         "data": result["rows"] if result else [],
                         "column_types": column_types
                     }
+                    state_data = self._serialize_state_data(state_data)  # Serialize state_data
                 except Exception as e:
                     db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for DROP TABLE: {str(e)}"
                 finally:
                     db.reset_cursor()  # Ensure cursor is clean
-        
+            
         elif sql_query_lower.startswith("alter table"):
             operation_type = "ALTER"
             match = re.match(r"alter\s+table\s+(\w+\.\w+|\w+)\s+rename\s+column\s+(\w+)\s+to\s+(\w+)", sql_query_lower, re.IGNORECASE)
@@ -185,6 +201,7 @@ class HistoryManager:
                     if not columns:
                         return None, None, None, f"Failed to capture state for ALTER: No columns found in {table_name}"
                     state_data = {"old_column": old_col, "new_column": new_col, "columns": columns}
+                    state_data = self._serialize_state_data(state_data)  # Serialize state_data
                 except Exception as e:
                     db.reset_cursor()  # Reset cursor on error
                     return None, None, None, f"Failed to capture state for ALTER: {str(e)}"
