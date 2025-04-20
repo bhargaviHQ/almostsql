@@ -4,7 +4,8 @@ from database.db_connection import DBConnection
 from config.config import Config
 import mysql.connector
 import re
-import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 def get_available_schemas(db_params):
     db = DBConnection(**db_params)
@@ -19,19 +20,23 @@ def create_schema(schema_name, db_params):
         db.execute_query(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
     finally:
         db.close()
-def serialize_result(result):
-    def convert_dates(obj):
-        if isinstance(obj, (datetime.date, datetime.datetime)):
-            return obj.isoformat()
-        elif isinstance(obj, dict):
-            return {key: convert_dates(value) for key, value in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_dates(item) for item in obj]
-        elif isinstance(obj, tuple):
-            return tuple(convert_dates(item) for item in obj)
-        return obj
 
-    return convert_dates(result)
+def ensure_json_serializable(obj):
+    """Recursively serialize datetime and Decimal objects to JSON-compatible types."""
+    def convert_dates_and_decimals(obj):
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat()
+        elif isinstance(obj, Decimal):
+            return str(obj)  # Convert Decimal to string to preserve precision
+        elif isinstance(obj, dict):
+            return {key: convert_dates_and_decimals(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_dates_and_decimals(item) for item in obj]
+        elif isinstance(obj, tuple):
+            return tuple(convert_dates_and_decimals(item) for item in obj)
+        return obj
+    return convert_dates_and_decimals(obj)
+
 def format_html_table(table_data):
     if isinstance(table_data, str):
         return f"<p>{table_data or 'No results found'}</p>"
@@ -181,7 +186,7 @@ def main():
         .almostsql-title {
             font-size: 28px !important;
             font-weight: bold;
-            color: #2c3e50;
+            color: white;
             margin-bottom: 20px;
         }
         .sql-query {
@@ -308,11 +313,10 @@ def main():
     
     if st.button("Submit Query") and user_input and schema_name:
         with st.spinner("Processing your query..."):
+            #st.session_state.input_value = " "
             new_result = st.session_state.controller.process_query(user_input, schema_name)
-            st.session_state.results = [new_result]
-            if new_result["status"] != "confirmation_needed":
-                st.session_state.input_value = ""
-
+            st.session_state.results = [ensure_json_serializable(new_result)]
+            
     if st.session_state.results:
         latest_result = st.session_state.results[-1]
         if latest_result["status"] == "success":
@@ -356,10 +360,10 @@ def main():
                             latest_result["sql_query"], schema_name
                         )
                         if state_error:
-                            st.session_state.results = [{"status": "error", "message": state_error}]
+                            st.session_state.results = [ensure_json_serializable({"status": "error", "message": state_error})]
                         else:
                             result_exec = db.execute_query(latest_result["sql_query"])
-                            result_exec_serialized = serialize_result(result_exec)  # Serialize result_exec
+                            result_exec_serialized = ensure_json_serializable(result_exec)
                             version_id = st.session_state.controller.history.save_query(
                                 st.session_state.pending_query["input"],
                                 latest_result["sql_query"],
@@ -378,18 +382,17 @@ def main():
                             # Clear confirmation state
                             st.session_state.confirm_needed = False
                             st.session_state.pending_query = None
-                            st.session_state.input_value = ""
+                            st.session_state.input_value = " "
                             st.success("Query executed successfully")
                             st.rerun()
                     except Exception as e:
-                        st.session_state.results = [{"status": "error", "message": f"Error executing confirmed query: {str(e)}"}]
+                        st.session_state.results = [ensure_json_serializable({"status": "error", "message": f"Error executing confirmed query: {str(e)}"})]
                     finally:
                         db.close()
                     if st.session_state.results[-1]["status"] == "error":
                         st.rerun()
     with st.expander("Query History"):
         history = st.session_state.controller.history.get_history()
-        print("History data:", history)  # Debug print
         if history:
             if st.button("Clear History"):
                 with st.spinner("Clearing history..."):
@@ -397,19 +400,11 @@ def main():
                     st.rerun()
             
             for index, (version_id, user_q, sql_q, timestamp, schema_name) in enumerate(history):
-                print(f"History entry {index}:", {
-                    "version_id": version_id,
-                    "user_query": user_q,
-                    "sql_query": sql_q,
-                    "timestamp": timestamp,
-                    "schema_name": schema_name
-                })  # Debug print
                 st.write(f"Version {version_id} ({timestamp}): {user_q} (Schema: {schema_name or 'Unknown'})")
                 if st.button(f"Revert to Version {version_id}", key=f"revert_{version_id}_{index}"):
                     with st.spinner("Reverting to version..."):
                         revert_result = st.session_state.controller.revert_to_version(version_id)
-                        st.session_state.results = [serialize_result(revert_result)]  # Serialize revert_result
-                        print("Revert result:", revert_result)  # Debug print
+                        st.session_state.results = [ensure_json_serializable(revert_result)] 
                         if revert_result["status"] == "error":
                             st.rerun()
 
