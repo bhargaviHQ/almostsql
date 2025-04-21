@@ -21,13 +21,13 @@ The application is targeted towards SQL learners, developers, educators, DB admi
 ### Functional Modules
 *Core components of AlmostSQL's perception, cognition, feedback, and memory.*
 <p align="center">
-  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/modules.jpg" width="400" />
+  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/modules.jpg" width="500" />
 </p>
 
 ### System Architecture
 *High-level architecture of AlmostSQL’s multi-agent flow from natural language input to SQL execution and feedback.*
 <p align="center">
-  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/architecture.jpg" width="400" />
+  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/architecture.jpg" width="500" />
 </p>
 ### Prerequisites
 - **Python 3.8+** installed on system.
