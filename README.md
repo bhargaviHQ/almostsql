@@ -29,6 +29,7 @@ The application is targeted towards SQL learners, developers, educators, DB admi
 <p align="center">
   <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/architecture.jpg" width="500" />
 </p>
+
 ### Prerequisites
 - **Python 3.8+** installed on system.
 - A running **MySQL Server** with access credentials.
