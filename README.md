@@ -77,6 +77,8 @@ streamlit run main.py
 Click Save and Proceed to connect. If successful, the main interface will load.
 
 ###  Features
+Similar to Jupyter Notebook, AlmostSQL is an open-source, interactive web application that enables you to perform CRUD operations on your database. It also allows modifying the connection to make it accessible to other MySQL databases.
+
 - Choose or create a schema via the sidebar.
 - Upload a CSV, specify the table name in the query or sidebar. Tables are created with VARCHAR(255) columns if needed.
 - Destructive queries like DELETE, UPDATE, or ALTER queries require confirmation.
