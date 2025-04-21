@@ -83,3 +83,5 @@ Similar to Jupyter Notebook, AlmostSQL is an open-source, interactive web applic
 - Upload a CSV, specify the table name in the query or sidebar. Tables are created with VARCHAR(255) columns if needed.
 - Destructive queries like DELETE, UPDATE, or ALTER queries require confirmation.
 - View past queries and revert to a specific version or clear history.
+
+[Reference](https://markovate.com/blog/agentic-ai-architecture/)
