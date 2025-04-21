@@ -46,7 +46,7 @@ When a user submits a query:
 
 ### Main Panel:
 
-- **Query Input Box**: Enter natural language queries (e.g., `“show all products”`) or SQL commands.
+- **Query Input Box**: Enter natural language queries (e.g., `"show all products"`) or SQL commands.
 - **Submit Query Button**: Processes the query.
 - **Results Display**: Shows query results as an HTML table or error/clarification messages. Displays up to 50 rows, configurable to show more as needed.
 - **Learning Output Expander**: Displays the original request and generated SQL.
@@ -93,6 +93,6 @@ Users can provide various types of inputs in the query box.
    - Queries involving `DELETE`, `UPDATE`, or `ALTER` require user confirmation to prevent accidental changes.
 
 - Query History and Reversion:
-   - View past queries in the “Query History” expander.
+   - View past queries in the "Query History" expander.
    - Click **"Revert to Version X"** to undo a query.
    - Use **"Clear History"** to reset the history.
