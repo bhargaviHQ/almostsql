@@ -35,7 +35,7 @@ To learn more about the detailed instructions and explanations, please refer to 
 ### Prerequisites
 - **Python 3.8+** installed on system.
 - A running **MySQL Server** with access credentials.
-- **GROQ API Key** is required to access the language model for query parsing. Obtain one from [GROQ](https://groq.com). Other API keys may also be used.
+- **GROQ API Key** is required to access the language model for query parsing. Obtain one from [GROQ](https://groq.com). Other API keys can be used with config file adjustments.
 
 ### Setup & Usage
 
