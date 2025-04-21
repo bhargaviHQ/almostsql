@@ -44,17 +44,26 @@ The application is targeted towards SQL learners, developers, educators, DB admi
 git clone https://github.com/bhargaviHQ/almostsql
 cd almostsql
 ```
-2.  Install dependencies
+2. Create a Virtual Environment
+
+
+```bash
+python -m venv venv
+source venv/bin/activate
+# On Windows: venv\Scripts\activate
+```
+
+3.  Install dependencies
 
    ```bash
    pip install -r requirements.txt
    ```
-3. Set up MySQL and ensure your MySQL server is running. Note the host, user, password, and database name for configuration.  
-4. Start the Streamlit App:
+4. Set up MySQL and ensure your MySQL server is running. Note the host, user, password, and database name for configuration.  
+5. Start the Streamlit App:
 ```bash
 streamlit run main.py
 ```
-5. Access the UI by opening your browser and navigating to http://localhost:8501 (or the port shown in the terminal).
+6. Access the UI by opening your browser and navigating to http://localhost:8501 (or the port shown in the terminal).
 
 ### Configure the Application
 - GROQ API Key- GROQ API key used for query parsing
