@@ -11,25 +11,31 @@ Built using **LangChain**, **GROQ Cloud** (for accessing the `llama-3.3-70b-vers
 
 The application is targeted towards SQL learners, developers, educators, DB admins, and AI researchers, offering interactive learning, streamlined query execution, and safe experimentation, with use cases including SQL education and data prototyping.
 
-#### Key Functions
+### Key Functions
 
 - Parses natural language queries into SQL using LLM.  
 - Processes CSV uploads to create and populate tables.  
 - Reverts queries (e.g., undo an `INSERT` with a corresponding `DELETE`).  
 - Handles errors with clarification prompts and confirms risky queries before execution.
 
+### Functional Modules
+*Core components of AlmostSQL's perception, cognition, feedback, and memory.*
 <p align="center">
-  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/modules.jpg" width="400" />
+  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/modules.jpg" width="500" />
 </p>
+
+### System Architecture
+*High-level architecture of AlmostSQL’s multi-agent flow from natural language input to SQL execution and feedback.*
 <p align="center">
-  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/architecture.jpg" width="400" />
+  <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/architecture.jpg" width="500" />
 </p>
-#### Prerequisites
+
+### Prerequisites
 - **Python 3.8+** installed on system.
 - A running **MySQL Server** with access credentials.
 - **GROQ API Key** is required to access the language model for query parsing. Obtain one from [GROQ](https://groq.com). Other API keys may also be used.
 
-#### Setup & Usage
+### Setup & Usage
 
 1. Clone the Repository
 
@@ -38,19 +44,28 @@ The application is targeted towards SQL learners, developers, educators, DB admi
 git clone https://github.com/bhargaviHQ/almostsql
 cd almostsql
 ```
-2.  Install dependencies
+2. Create a Virtual Environment
+
+
+```bash
+python -m venv venv
+source venv/bin/activate
+# On Windows: venv\Scripts\activate
+```
+
+3.  Install dependencies
 
    ```bash
    pip install -r requirements.txt
    ```
-3. Set up MySQL and ensure your MySQL server is running. Note the host, user, password, and database name for configuration.  
-4. Start the Streamlit App:
+4. Set up MySQL and ensure your MySQL server is running. Note the host, user, password, and database name for configuration.  
+5. Start the Streamlit App:
 ```bash
 streamlit run main.py
 ```
-5. Access the UI by opening your browser and navigating to http://localhost:8501 (or the port shown in the terminal).
+6. Access the UI by opening your browser and navigating to http://localhost:8501 (or the port shown in the terminal).
 
-#### Configure the Application
+### Configure the Application
 - GROQ API Key- GROQ API key used for query parsing
 - Database Host- Typically localhost or MySQL server’s IP address (127.0.0.1)
 - Database User
@@ -59,8 +74,7 @@ streamlit run main.py
 
 Click Save and Proceed to connect. If successful, the main interface will load.
 
-
-####  Features
+###  Features
 - Choose or create a schema via the sidebar.
 - Upload a CSV, specify the table name in the query or sidebar. Tables are created with VARCHAR(255) columns if needed.
 - Destructive queries like DELETE, UPDATE, or ALTER queries require confirmation.
