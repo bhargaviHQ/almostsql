@@ -18,9 +18,14 @@ The application is targeted towards SQL learners, developers, educators, DB admi
 - Reverts queries (e.g., undo an `INSERT` with a corresponding `DELETE`).  
 - Handles errors with clarification prompts and confirms risky queries before execution.
 
+## Functional Modules
+*Core components of AlmostSQL's perception, cognition, feedback, and memory.*
 <p align="center">
   <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/modules.jpg" width="400" />
 </p>
+
+## System Architecture
+*High-level architecture of AlmostSQL’s multi-agent flow from natural language input to SQL execution and feedback.*
 <p align="center">
   <img src="https://github.com/bhargaviHQ/almostsql/blob/main/assets/images/architecture.jpg" width="400" />
 </p>
