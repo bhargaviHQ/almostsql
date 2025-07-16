@@ -11,6 +11,8 @@ Built using **LangChain**, **GROQ Cloud** (for accessing the `llama-3.3-70b-vers
 
 The application is targeted towards SQL learners, developers, educators, DB admins, and AI researchers, offering interactive learning, streamlined query execution, and safe experimentation, with use cases including SQL education and data prototyping.
 
+[Here’s the link to LinkedIn post and demo](https://www.linkedin.com/posts/bhargavi-sriram_what-if-you-could-manage-your-database-just-activity-7320120311335501825-ei25?utm_source=share&utm_medium=member_desktop&rcm=ACoAABC30B4BzFLQSwTJkAxJy-yeA86gzY5dtk4)
+
 ### Key Functions
 
 - Parses natural language queries into SQL using LLM.  
