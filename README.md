@@ -5,7 +5,7 @@ You almost wrote that. We’ll take it from here.
 </p>
 
 
-**AlmostSQL** is a multi-agent AI system that simplifies MySQL database interaction by enabling users to execute CRUD queries (Create, Read, Update, Delete), load data from CSV files, and revert queries using natural language or SQL inputs.  
+**AlmostSQL** is a multi-agent AI system that simplifies MySQL database interaction by enabling users to execute CRUD queries (Create, Read, Update, Delete), load data from CSV files, and <ins>**revert queries**</ins> using natural language or SQL inputs.  
 
 Built using **LangChain**, **GROQ Cloud** (for accessing the `llama-3.3-70b-versatile` LLM), **Python**, and **Streamlit**, it automates query parsing, validation, execution, and rollbacks.
 
